@@ -1,66 +1,95 @@
-# Projeto Korp - Servidor Go com Docker, Prometheus, Grafana e Ansible
+# HTTP Server - Projeto Korp 🚀
 
-Fala galera! Subi aqui o projeto do desafio da Korp. Tá bem completinho: tem a aplicação Go, Nginx fazendo proxy reverso na porta 80, Prometheus/Grafana pra monitorar tudo e um playbook do Ansible pra subir o ambiente automático.
+Este projeto é uma demonstração de infraestrutura DevOps moderna, cobrindo desde o desenvolvimento de uma API simples em **Go** até o empacotamento com **Docker/Docker Compose**, observabilidade com **Prometheus/Grafana** e automação de provisionamento com **Ansible**.
 
-## Como rodar o projeto local (sem docker nem nada)
+---
 
-Se você tiver o Go instalado e quiser testar rapidão na máquina:
+## 🛠️ Tecnologias e Ferramentas
+* **Linguagem:** Go (servidor HTTP nativo e expose de métricas Prometheus)
+* **Containers & Redes:** Docker & Docker Compose
+* **Proxy Reverso:** NGINX (atuando como gateway na porta 80 e encaminhando o tráfego interno)
+* **Observabilidade:** Prometheus (coleta de métricas da API) e Grafana (visualização em dashboard provisionado automaticamente)
+* **Automação/IaC:** Ansible (Playbook pronto para instalar dependências, configurar o host e subir a stack)
 
-```bash
-go run main.go
-```
+---
 
-Aí a API vai escutar na porta `8080` (ex: `http://localhost:8080/projeto-korp`).
-Dá pra gerar o binário também se quiser:
-```bash
-go build -o server
-./server
+## 📐 Estrutura e Arquitetura
+
+O tráfego é centralizado no NGINX para evitar exposição direta das portas dos serviços da stack ao host.
+
+```text
+[Cliente] 
+   │
+   ▼ (Porta 80)
+┌────────────────────────┐
+│         NGINX          │
+└──────────┬─────────────┘
+           │
+           ├──────────────► [ /projeto-korp ] ──► App Go (Porta 8080)
+           │                                            │
+           │                                            ▼ (Métricas /metrics)
+           │                                      ┌───────────┐
+           │                                      │Prometheus │ (Porta 9090)
+           │                                      └─────▲─────┘
+           │                                            │ (Scrape)
+           └──────────────► [ Grafana Dashboard ] ──────┘ (Porta 3000)
 ```
 
 ---
 
-## Como rodar com Docker Compose
+## 🚀 Como Executar o Projeto
 
-Essa parte é legal porque a aplicação Go fica escondida (só exposta internamente na rede do docker) e o Nginx cuida de receber os acessos na porta `80` e mandar pra ela.
+### Etapa 1: Rodar o servidor Go localmente
+Se quiser testar a aplicação pura na sua máquina:
+```bash
+go run main.go
+```
+Ou compile o binário:
+```bash
+go build -o server
+./server
+```
+A API ficará disponível em `http://localhost:8080/projeto-korp`.
 
-Pra subir os containers (App Go, Nginx, Prometheus e Grafana):
-
+### Etapa 2: Executar com Docker Compose (NGINX + App + Observabilidade)
+Para subir toda a estrutura (Nginx, App, Prometheus e Grafana):
 ```bash
 docker compose up -d --build
 ```
 
-**Para testar se deu bom:**
-```bash
-# O endpoint da aplicação via Nginx
-curl http://localhost/projeto-korp
+**Validar se o ambiente subiu com sucesso:**
+* **API Principal (via Proxy Nginx na porta 80):**
+  ```bash
+  curl http://localhost/projeto-korp
+  ```
+  *Resposta esperada:* `{"nome":"Projeto Korp","horario":"2026-07-10T18:32:14Z"}`
+* **Prometheus:** `http://localhost:9090` (Endpoint `/api/v1/targets` deve mostrar o target `app:8080` como **UP**)
+* **Grafana:** `http://localhost:3000` (Login: `admin` / Senha: `admin`). O Dashboard `HTTP Server Projeto Korp` já virá pronto e configurado exibindo os gráficos de requisições.
 
-# Prometheus (porta 9090)
-curl http://localhost:9090/-/ready
-
-# Grafana (porta 3000)
-curl http://localhost:3000/api/health
-```
-
-E para limpar tudo:
+Derrubar o ambiente:
 ```bash
 docker compose down
 ```
 
 ---
 
-## Como rodar a automação com Ansible
+## 🤖 Provisionamento Automatizado com Ansible
 
-Fiz um playbook pra automatizar o provisionamento. Ele instala o docker, as dependências do python, joga as configs pro diretório `/opt/http-server-projeto-korp` e sobe o compose sozinho.
+O playbook configura todo o servidor de destino automaticamente. Ele instala o Docker, configura as regras de grupos, cria a pasta do projeto em `/opt/http-server-projeto-korp`, transfere os arquivos de configuração e inicializa os containers via Docker Compose.
 
-**Pré-requisitos:**
-Ter o Ansible instalado (se estiver no Ubuntu/WSL, dá pra rodar `pipx install ansible` e instalar a collection do docker com `ansible-galaxy collection install -r ansible/requirements.yml`).
+**Como rodar a automação:**
+1. Instale a dependência de Ansible necessária:
+   ```bash
+   ansible-galaxy collection install -r ansible/requirements.yml
+   ```
+2. Execute o playbook localmente:
+   ```bash
+   ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+   ```
 
-**Rodando o playbook:**
-```bash
-# Rodar na própria máquina (localhost)
-ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
-```
+---
 
-Se precisar rodar como sudo e pedir senha, adiciona a flag `-K` no final.
-
-Qualquer dúvida manda um alô!
+## 🌟 Destaques do Projeto (Diferenciais DevOps)
+* **Provisionamento As-Code do Grafana:** O datasource do Prometheus e o Dashboard de monitoramento da aplicação são injetados automaticamente no container através de arquivos de configuração em `grafana/provisioning`, sem necessidade de configuração manual via interface.
+* **Resiliência do NGINX:** Configuração utilizando DNS dinâmico e resolver interno do Docker (`127.0.0.11`) para evitar falhas/crash do proxy caso o container da aplicação Go demore alguns segundos extras para iniciar.
+* **Segurança de Portas:** Apenas as portas necessárias para acesso externo (`80` para o proxy, `9090` para o Prometheus e `3000` para o Grafana) estão expostas para o host. A aplicação Go fica protegida dentro da rede virtual isolada do Docker.
