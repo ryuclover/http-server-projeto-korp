@@ -1,0 +1,57 @@
+
+
+services:
+  http-server-projeto-korp:
+    build: .
+    container_name: http-server-projeto-korp
+    expose:
+      - "8080"
+    networks:
+      korp-net:
+        aliases:
+          - app
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    depends_on:
+      - http-server-projeto-korp
+    networks:
+      - korp-net
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - korp-net
+
+  grafana:
+    image: grafana/grafana:11.5.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - korp-net
+
+networks:
+  korp-net:
+    driver: bridge
+
+volumes:
+  grafana-data:

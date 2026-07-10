@@ -1,0 +1,14 @@
+# Scripts temporários de teste/automação
+run_*.sh
+
+# Binários Go
+server
+
+# Dependências e cache
+vendor/
+
+# Variáveis de ambiente
+.env
+
+# VS Code
+.vscode/

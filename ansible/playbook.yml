@@ -1,0 +1,229 @@
+---
+- name: Provisionar ambiente http-server-projeto-korp
+  hosts: all
+  become: true
+
+  vars:
+    project_dir: /opt/http-server-projeto-korp
+    target_user: "{{ ansible_user_id | default(ansible_env.USER) }}"
+
+  tasks:
+
+    # ------------------------------------------------------------------ #
+    # 1. Pre-requisitos do sistema
+    # ------------------------------------------------------------------ #
+    - name: Atualizar cache de pacotes apt
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Instalar dependencias para adicionar repositorio Docker
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: present
+
+    # ------------------------------------------------------------------ #
+    # 2. Instalar Docker Engine + Compose plugin
+    # ------------------------------------------------------------------ #
+    - name: Criar diretorio de keyrings do apt
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Baixar chave GPG oficial do Docker
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        force: false
+
+    - name: Registrar arquitetura do sistema
+      command: dpkg --print-architecture
+      register: dpkg_arch
+      changed_when: false
+
+    - name: Adicionar repositorio Docker ao apt
+      apt_repository:
+        repo: >-
+          deb [arch={{ dpkg_arch.stdout }}
+          signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+
+    - name: Instalar Docker Engine e plugin Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Garantir que o servico Docker esta ativo e habilitado
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Adicionar usuario alvo ao grupo docker
+      user:
+        name: "{{ target_user }}"
+        groups: docker
+        append: true
+
+    - name: Instalar SDK Python do Docker (necessario para modulos Ansible)
+      pip:
+        name: docker
+        state: present
+        executable: pip3
+        extra_args: --break-system-packages
+
+    # ------------------------------------------------------------------ #
+    # 3. Criar estrutura de diretorios do projeto
+    # ------------------------------------------------------------------ #
+    - name: Criar diretorio raiz do projeto
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Criar diretorios de configuracao
+      file:
+        path: "{{ project_dir }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - nginx
+        - prometheus
+        - grafana/provisioning/datasources
+        - grafana/provisioning/dashboards
+
+    # ------------------------------------------------------------------ #
+    # 4. Copiar arquivos do projeto para o servidor
+    # ------------------------------------------------------------------ #
+    - name: Copiar codigo-fonte Go (main.go)
+      copy:
+        src: "{{ playbook_dir }}/../main.go"
+        dest: "{{ project_dir }}/main.go"
+        mode: "0644"
+
+    - name: Copiar go.mod
+      copy:
+        src: "{{ playbook_dir }}/../go.mod"
+        dest: "{{ project_dir }}/go.mod"
+        mode: "0644"
+
+    - name: Copiar go.sum
+      copy:
+        src: "{{ playbook_dir }}/../go.sum"
+        dest: "{{ project_dir }}/go.sum"
+        mode: "0644"
+
+    - name: Copiar Dockerfile
+      copy:
+        src: "{{ playbook_dir }}/../Dockerfile"
+        dest: "{{ project_dir }}/Dockerfile"
+        mode: "0644"
+
+    - name: Copiar docker-compose.yml
+      copy:
+        src: "{{ playbook_dir }}/../docker-compose.yml"
+        dest: "{{ project_dir }}/docker-compose.yml"
+        mode: "0644"
+
+    - name: Copiar configuracao NGINX
+      copy:
+        src: "{{ playbook_dir }}/../nginx/"
+        dest: "{{ project_dir }}/nginx/"
+        mode: "0644"
+
+    - name: Copiar prometheus.yml
+      copy:
+        src: "{{ playbook_dir }}/../prometheus/prometheus.yml"
+        dest: "{{ project_dir }}/prometheus/prometheus.yml"
+        mode: "0644"
+
+    - name: Copiar datasource do Grafana
+      copy:
+        src: "{{ playbook_dir }}/../grafana/provisioning/datasources/"
+        dest: "{{ project_dir }}/grafana/provisioning/datasources/"
+        mode: "0644"
+
+    - name: Copiar dashboards do Grafana
+      copy:
+        src: "{{ playbook_dir }}/../grafana/provisioning/dashboards/"
+        dest: "{{ project_dir }}/grafana/provisioning/dashboards/"
+        mode: "0644"
+
+    # ------------------------------------------------------------------ #
+    # 5. Build e execucao dos containers via Docker Compose
+    # ------------------------------------------------------------------ #
+    - name: Build e subir todos os containers com Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        build: always
+        state: present
+        remove_orphans: true
+      register: compose_result
+
+    - name: Exibir containers criados/atualizados
+      debug:
+        msg: >-
+          Containers: {{
+            compose_result.containers
+            | map(attribute='Name')
+            | list
+            | join(', ')
+          }}
+      when: compose_result.containers is defined
+
+    # ------------------------------------------------------------------ #
+    # 6. Aguardar servicos ficarem disponiveis
+    # ------------------------------------------------------------------ #
+    - name: Aguardar NGINX na porta 80
+      wait_for:
+        host: 127.0.0.1
+        port: 80
+        timeout: 90
+        delay: 3
+
+    - name: Aguardar Prometheus na porta 9090
+      wait_for:
+        host: 127.0.0.1
+        port: 9090
+        timeout: 60
+        delay: 2
+
+    - name: Aguardar Grafana na porta 3000
+      wait_for:
+        host: 127.0.0.1
+        port: 3000
+        timeout: 60
+        delay: 2
+
+    # ------------------------------------------------------------------ #
+    # 7. Validacao final
+    # ------------------------------------------------------------------ #
+    - name: GET /projeto-korp via NGINX
+      uri:
+        url: http://localhost/projeto-korp
+        method: GET
+        return_content: true
+        status_code: 200
+      register: korp_response
+
+    - name: Exibir resposta de /projeto-korp
+      debug:
+        msg: "Resposta de http://localhost/projeto-korp => {{ korp_response.content }}"
