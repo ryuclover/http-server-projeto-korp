@@ -1,67 +1,66 @@
-# http-server-projeto-korp
+# Projeto Korp - Servidor Go com Docker, Prometheus, Grafana e Ansible
 
-Este é um serviço HTTP simples em Golang.
+Fala galera! Subi aqui o projeto do desafio da Korp. Tá bem completinho: tem a aplicação Go, Nginx fazendo proxy reverso na porta 80, Prometheus/Grafana pra monitorar tudo e um playbook do Ansible pra subir o ambiente automático.
 
-## Etapa 1: Rodar o servidor localmente
+## Como rodar o projeto local (sem docker nem nada)
 
-Certifique-se de ter o Go instalado em sua máquina.
+Se você tiver o Go instalado e quiser testar rapidão na máquina:
 
 ```bash
 go run main.go
 ```
-Ou se preferir com Go Modules:
+
+Aí a API vai escutar na porta `8080` (ex: `http://localhost:8080/projeto-korp`).
+Dá pra gerar o binário também se quiser:
 ```bash
 go build -o server
 ./server
 ```
 
-## Etapa 2: Usar Docker (standalone)
+---
 
-Caso queira buildar e testar somente o container da aplicação na porta 8080:
+## Como rodar com Docker Compose
+
+Essa parte é legal porque a aplicação Go fica escondida (só exposta internamente na rede do docker) e o Nginx cuida de receber os acessos na porta `80` e mandar pra ela.
+
+Pra subir os containers (App Go, Nginx, Prometheus e Grafana):
 
 ```bash
-docker build -t http-server-projeto-korp .
-docker run -d -p 8080:8080 --name korp-server http-server-projeto-korp
+docker compose up -d --build
 ```
-*Lembre-se de deletar esse container (`docker rm -f korp-server`) antes de ir para a etapa do Docker Compose para evitar conflitos!*
 
-## Etapa 3: Usar Docker Compose com NGINX
-
-Nesta etapa, temos o `docker-compose.yml` que provisiona a aplicação Go em uma rede interna, sem expor sua porta para a máquina host, e o NGINX atuando como proxy reverso na porta 80.
-
-### Como subir o ambiente:
-
-1. Certifique-se de que a porta `80` (e a `8080` de testes antigos) estão livres no seu sistema. Pare os containers avulsos com `docker rm -f korp-server`.
-2. Na raiz do projeto, execute o Docker Compose:
-
+**Para testar se deu bom:**
 ```bash
-docker compose up -d
-```
-*O `--build` é opcional, mas se alterar o código e quiser recompilar, rode `docker compose up -d --build`.*
-
-### Como testar o proxy reverso:
-
-Agora você acessará o NGINX na porta padrão HTTP (80):
-
-```bash
+# O endpoint da aplicação via Nginx
 curl http://localhost/projeto-korp
-# O ":80" é opcional, mas pode testar assim também:
-# curl http://localhost:80/projeto-korp
+
+# Prometheus (porta 9090)
+curl http://localhost:9090/-/ready
+
+# Grafana (porta 3000)
+curl http://localhost:3000/api/health
 ```
 
-### Resposta esperada
-
-```json
-{
-  "nome": "Projeto Korp",
-  "horario": "2026-07-10T03:07:35Z"
-}
-```
-
-### Como derrubar o ambiente:
-
-Para parar e remover os containers, bem como a rede criada:
-
+E para limpar tudo:
 ```bash
 docker compose down
 ```
+
+---
+
+## Como rodar a automação com Ansible
+
+Fiz um playbook pra automatizar o provisionamento. Ele instala o docker, as dependências do python, joga as configs pro diretório `/opt/http-server-projeto-korp` e sobe o compose sozinho.
+
+**Pré-requisitos:**
+Ter o Ansible instalado (se estiver no Ubuntu/WSL, dá pra rodar `pipx install ansible` e instalar a collection do docker com `ansible-galaxy collection install -r ansible/requirements.yml`).
+
+**Rodando o playbook:**
+```bash
+# Rodar na própria máquina (localhost)
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+```
+
+Se precisar rodar como sudo e pedir senha, adiciona a flag `-K` no final.
+
+Qualquer dúvida manda um alô!
