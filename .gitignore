@@ -1,8 +1,9 @@
 # Scripts temporários de teste/automação
 run_*.sh
 
-# Binários Go
+# Binários Go e arquivos de build temporários
 server
+tmp_build_test
 
 # Dependências e cache
 vendor/
