@@ -131,6 +131,12 @@
         dest: "{{ project_dir }}/go.sum"
         mode: "0644"
 
+    - name: Copiar diretorio internal
+      copy:
+        src: "{{ playbook_dir }}/../internal/"
+        dest: "{{ project_dir }}/internal/"
+        mode: "0644"
+
     - name: Copiar Dockerfile
       copy:
         src: "{{ playbook_dir }}/../Dockerfile"

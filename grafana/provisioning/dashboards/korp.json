@@ -94,6 +94,31 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 4,
+      "title": "Total HTTP Requests (Gráfico)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-korp" },
+          "expr": "http_requests_total",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
